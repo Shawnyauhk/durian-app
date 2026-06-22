@@ -25,12 +25,14 @@ DATASETS = {
         "project": "durian-ripeness-detection-xtned",
         "description": "Original: 1,438 images, 3 classes (Ripe/Unripe/Defect)",
         "subdir": "roboflow_xtned",
+        "type": "classification",
     },
     "mutruity": {
         "workspace": "wjy-tis6h",
         "project": "durian_mutruity",
         "description": "NEW: 3,000 images, 3 classes (defective/immature/mature) ★",
         "subdir": "roboflow_mutruity",
+        "type": "object-detection",
     },
 }
 
@@ -62,10 +64,34 @@ def download_dataset(api_key: str, dataset_name: str):
     version = project_obj.versions()[0]
 
     print(f"Version: {version.version if hasattr(version, 'version') else 'latest'}")
-    print(f"Classes: {version.classes}")
-    print(f"Images:  {len(version.images) if hasattr(version, 'images') else 'N/A'}")
 
-    dataset = version.download("folder", location=data_dir)
+    # Try to get class names — API version differences
+    try:
+        classes = version.classes if hasattr(version, 'classes') else project_obj.classes
+        print(f"Classes: {classes}")
+    except Exception:
+        pass
+
+    try:
+        n_images = len(version.images) if hasattr(version, 'images') else 'N/A'
+        print(f"Images:  {n_images}")
+    except Exception:
+        pass
+
+    # Determine format based on project type
+    # Classification → "folder" (class dirs), Object Detection → "yolov8" (txt annotations)
+    is_classification = info.get("type") == "classification"
+    fmt = "folder" if is_classification else "multiclass"
+    
+    try:
+        dataset = version.download(fmt, location=data_dir)
+    except Exception as e:
+        if "invalid format" in str(e) or "multiclass" in str(e).lower():
+            print(f"  Format 'multiclass' not supported, trying 'yolov8'...")
+            dataset = version.download("yolov8", location=data_dir)
+        else:
+            raise e
+    
     print(f"✅ Download complete: {info['project']}")
     return dataset
 
