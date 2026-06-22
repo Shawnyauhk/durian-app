@@ -72,6 +72,7 @@ async def model_status():
         "acoustic_inference_method": model_info.get("method", "heuristic"),
         "acoustic_labels": model_info.get("labels", ["unripe", "ripe", "overripe"]),
         "tflite_available": model_info.get("tflite_available", False),
+        "model_exists_on_disk": model_info.get("model_exists", False),
         "feedback_count": _count_feedback_records(),
     }
 
