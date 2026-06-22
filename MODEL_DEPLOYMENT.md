@@ -8,6 +8,7 @@
 |------|---------|------|---------|
 | 視覺（AI 眼）| 前端瀏覽器（TF.js）| `.json` + `.bin` shards | ⏳ 待部署 |
 | 聲學（AI 耳）| 後端 FastAPI（TFLite）| `.tflite` | ⏳ 待部署 |
+| 聲學（瀏覽器端）| 前端瀏覽器（TF.js，可選）| `.json` + `.bin` shards | ⏳ 待部署 |
 
 ---
 
@@ -15,26 +16,38 @@
 
 ### 1.1 訓練後導出（Google Colab）
 
-```python
-# 在 04_train_vision.ipynb 的最後一步執行
-import tensorflowjs as tfjs
+在 `04_train_vision.ipynb` 中，Cell 9（TFLite）和 Cell 10（TF.js）會自動導出兩種格式：
 
-# 導出為 TF.js 格式（前端用）
-tfjs.converters.save_keras_model(model, 'tfjs_vision_model')
+**TF.js 格式（前端用 — 主要部署格式）**
+```bash
+# Colab notebook 已自動執行此命令
+!pip install -q tensorflowjs
 
-# 同時導出 TFLite（備用）
-converter = tf.lite.TFLiteConverter.from_keras_model(model)
-converter.optimizations = [tf.lite.Optimize.DEFAULT]
-tflite_model = converter.convert()
-with open('vision_model.tflite', 'wb') as f:
-    f.write(tflite_model)
+# 方法：先 save Keras model → 再用 tensorflowjs_converter 轉換
+model.save('/content/durian_vision_savedmodel')
+!tensorflowjs_converter \
+    --input_format=tf_saved_model \
+    --output_format=tfjs_graph_model \
+    /content/durian_vision_savedmodel \
+    /content/durian_vision_tfjs
 ```
 
 導出後會產生：
 ```
-tfjs_vision_model/
-├── model.json        # 模型架構
-├── group1-shard1of1.bin   # 模型權重
+durian_vision_tfjs/
+├── model.json           # 模型架構（tf.loadGraphModel 用的入口）
+├── group1-shard*.bin    # 模型權重（可能 1-4 個 shard）
+├── metadata.json        # 版本信息（可選）
+└── labels.txt           # 類別標籤
+```
+
+**TFLite 格式（備用）**
+```python
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+tflite_model = converter.convert()
+with open('durian_cnn.tflite', 'wb') as f:
+    f.write(tflite_model)
 ```
 
 ### 1.2 部署到前端
@@ -82,21 +95,41 @@ Render 前端是靜態托管，把模型文件放入 `public/models/vision/` 後
 
 ### 2.1 訓練後導出（Google Colab）
 
-```python
-# 在 03_train_acoustic.ipynb 的最後一步執行
+在 `03_train_acoustic.ipynb` 中，Cell 10（TFLite）和 Cell 12（TF.js）會自動導出兩種格式：
 
-# 導出 TFLite INT8
+**TFLite INT8 格式（後端用 — 主要部署格式）**
+```python
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.representative_dataset = representative_data_gen  # 已在 notebook 定義
-converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-converter.inference_input_type = tf.float32
-converter.inference_output_type = tf.float32
+converter.target_spec.supported_ops = [
+    tf.lite.OpsSet.TFLITE_BUILTINS,
+    tf.lite.OpsSet.SELECT_TF_OPS,
+]
 tflite_model = converter.convert()
 
 with open('knocknet_lite.tflite', 'wb') as f:
     f.write(tflite_model)
 print(f'Model size: {len(tflite_model) / 1024:.1f} KB')  # 目標 ~1MB
+```
+
+**TF.js 格式（前端瀏覽器端推理 — 可選，備用）**
+```bash
+!pip install -q tensorflowjs
+model.save('/content/knocknet_lite_savedmodel')
+!tensorflowjs_converter \
+    --input_format=tf_saved_model \
+    --output_format=tfjs_graph_model \
+    /content/knocknet_lite_savedmodel \
+    /content/knocknet_lite_tfjs
+```
+
+導出後會產生：
+```
+knocknet_lite_tfjs/
+├── model.json           # tf.loadGraphModel 用的入口
+├── group1-shard*.bin    # 模型權重
+├── metadata.json        # 版本信息
+└── labels.txt           # 類別標籤
 ```
 
 同時創建 metadata：
@@ -213,10 +246,11 @@ services:
 
 ### Phase 1 模型部署（訓練後第一次）
 
-- [ ] 在 Google Colab 運行 `03_train_acoustic.ipynb`，下載 `knocknet_lite.tflite`
-- [ ] 在 Google Colab 運行 `04_train_vision.ipynb`，下載 `tfjs_vision_model/`
+- [ ] 在 Google Colab 運行 `03_train_acoustic.ipynb`，下載 `knocknet_lite.tflite` + TF.js 文件
+- [ ] 在 Google Colab 運行 `04_train_vision.ipynb`，下載 TF.js model 文件
 - [ ] 把 `knocknet_lite.tflite` 放到 `backend/models/acoustic/`
-- [ ] 把 `tfjs_vision_model/*` 放到 `frontend/public/models/vision/`
+- [ ] 把 `knocknet_lite_tfjs/*` 放到 `frontend/public/models/acoustic/`（可選，瀏覽器端推理備用）
+- [ ] 把 `durian_vision_tfjs/*` 放到 `frontend/public/models/vision/`
 - [ ] `git add . && git commit -m "deploy: phase1 models" && git push`
 - [ ] Render 自動重新部署（前後端各 ~2-3 分鐘）
 - [ ] 訪問 `GET /api/model-status` 確認 `acoustic_model_loaded: true`
