@@ -6,9 +6,19 @@ audio_processor.py — 榴槤敲擊音分析
 """
 import io
 import os
+import logging
 import numpy as np
 import librosa
 import soundfile as sf
+
+# pydub for webm/opus decoding (browser-recorded audio)
+try:
+    from pydub import AudioSegment
+    HAS_PYDUB = True
+except ImportError:
+    HAS_PYDUB = False
+
+logger = logging.getLogger(__name__)
 
 # TFLite runtime (optional — falls back to heuristic if not installed)
 try:
@@ -136,21 +146,53 @@ def reload_model() -> bool:
 
 
 def load_audio(audio_bytes: bytes) -> np.ndarray:
-    """Load audio from bytes, convert to mono 16kHz."""
-    try:
-        buf = io.BytesIO(audio_bytes)
-        y, sr = sf.read(buf, always_2d=False)
-        if y.ndim > 1:
-            y = y.mean(axis=1)
-        if sr != TARGET_SR:
-            y = librosa.resample(y, orig_sr=sr, target_sr=TARGET_SR)
-    except Exception:
-        buf = io.BytesIO(audio_bytes)
-        y, sr = librosa.load(buf, sr=TARGET_SR, mono=True)
-
+    """Load audio from bytes, convert to mono 16kHz.
+    
+    Handles browser-recorded webm/opus via pydub+ffmpeg,
+    falls back to soundfile then librosa for WAV/other formats.
+    """
+    y = None
+    
+    # 1. Try pydub (handles webm/opus — browser-recorded format)
+    if HAS_PYDUB:
+        try:
+            seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
+            seg = seg.set_frame_rate(TARGET_SR).set_channels(1)
+            wav_buf = io.BytesIO()
+            seg.export(wav_buf, format='wav')
+            wav_buf.seek(0)
+            y, sr = sf.read(wav_buf, always_2d=False)
+            if y.ndim > 1:
+                y = y.mean(axis=1)
+            if sr != TARGET_SR:
+                y = librosa.resample(y, orig_sr=sr, target_sr=TARGET_SR)
+            logger.info(f"Audio loaded via pydub: {len(y)} samples at {TARGET_SR}Hz")
+        except Exception as e:
+            logger.warning(f"pydub conversion failed ({e}), trying soundfile directly")
+    
+    # 2. Try soundfile (handles WAV/FLAC/OGG)
+    if y is None:
+        try:
+            buf = io.BytesIO(audio_bytes)
+            y, sr = sf.read(buf, always_2d=False)
+            if y.ndim > 1:
+                y = y.mean(axis=1)
+            if sr != TARGET_SR:
+                y = librosa.resample(y, orig_sr=sr, target_sr=TARGET_SR)
+        except Exception:
+            pass
+    
+    # 3. Try librosa+ffmpeg (last resort)
+    if y is None:
+        try:
+            buf = io.BytesIO(audio_bytes)
+            y, sr = librosa.load(buf, sr=TARGET_SR, mono=True)
+        except Exception as e:
+            raise ValueError(f"Cannot decode audio: {e}")
+    
     if np.max(np.abs(y)) > 0:
         y = y / np.max(np.abs(y))
-
+    
     return y.astype(np.float32)
 
 
