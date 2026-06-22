@@ -12,8 +12,11 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (includes model files)
 COPY backend/ .
+
+# Verify model file exists and log it
+RUN ls -la /app/models/acoustic/ 2>/dev/null || echo "No model files yet"
 
 EXPOSE 8000
 
