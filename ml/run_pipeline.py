@@ -84,12 +84,12 @@ def download(scope: str = "all"):
 """)
 
     if scope in ("all", "vision"):
-        # Roboflow vision (needs API key)
+        # Roboflow vision datasets (needs API key)
         api_key = os.environ.get("ROBOFLOW_API_KEY", "")
         if api_key:
             run(
                 [sys.executable, str(SCRIPTS_DIR / "download_roboflow.py")],
-                "Download Roboflow durian vision dataset (1,438 images)"
+                "Download Roboflow durian vision datasets: xtned (1,438) + mutruity (3,000)"
             )
         else:
             print(f"""
@@ -101,8 +101,9 @@ def download(scope: str = "all"):
 
   Option 2 — Manual download:
     1. Go to: https://universe.roboflow.com/durian-cnn/durian-ripeness-detection-xtned
-    2. Sign up free → Export → "Folder" format
-    3. Unzip to: {DATA_RAW / 'roboflow'}
+    2. Go to: https://universe.roboflow.com/wjy-tis6h/durian_mutruity  ★ NEW
+    3. Sign up free → Export → "Folder" format
+    4. Unzip to: {DATA_RAW / 'roboflow_xtned'} and {DATA_RAW / 'roboflow_mutruity'}
 """)
 
 
@@ -129,16 +130,29 @@ def prepare(scope: str = "all"):
             )
 
     if scope in ("all", "vision"):
-        roboflow_dir = DATA_RAW / "roboflow"
-        if roboflow_dir.exists() and any(roboflow_dir.iterdir()):
+        # Check for any of the vision datasets
+        vision_dirs = [
+            ("xtned", DATA_RAW / "roboflow_xtned"),
+            ("mutruity", DATA_RAW / "roboflow_mutruity"),
+        ]
+        found_datasets = [name for name, d in vision_dirs if d.exists() and any(d.iterdir())]
+
+        if found_datasets:
             run(
                 [sys.executable, str(SCRIPTS_DIR / "prepare_vision.py"),
-                 "--dataset", "roboflow",
+                 "--dataset"] + found_datasets + ["--output", str(DATA_PROCESSED / "vision")],
+                f"Prepare vision images: {', '.join(found_datasets)} → 224×224 arrays"
+            )
+        # Also check legacy path
+        elif (DATA_RAW / "roboflow").exists() and any((DATA_RAW / "roboflow").iterdir()):
+            run(
+                [sys.executable, str(SCRIPTS_DIR / "prepare_vision.py"),
+                 "--dataset", "xtned",
                  "--output", str(DATA_PROCESSED / "vision")],
-                "Prepare Roboflow images → 224×224 arrays"
+                "Prepare Roboflow images (legacy path) → 224×224 arrays"
             )
         else:
-            print("  ⏭️  Skipping vision prep (no Roboflow data)")
+            print("  ⏭️  Skipping vision prep (no Roboflow data found)")
 
 
 def combine():

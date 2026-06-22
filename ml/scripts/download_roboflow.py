@@ -1,87 +1,122 @@
 """
-download_roboflow.py — 下載 Roboflow 榴槤成熟度照片數據集
-1,438 張圖片，3 類 (Ripe/Unripe/Defect)
-授權: CC BY
+download_roboflow.py — 下載 Roboflow 榴槤數據集
+
+支持多個 Roboflow 開源數據集：
+  1. durian-ripeness-detection-xtned  — 1,438 張，3 類 (Ripe/Unripe/Defect)
+     https://universe.roboflow.com/durian-cnn/durian-ripeness-detection-xtned
+  2. durian_mutruity                  — 3,000 張，3 類 (defective/immature/mature) ★ 新增！
+     https://universe.roboflow.com/wjy-tis6h/durian_mutruity
+     CC BY 4.0 授權
+
+用法:
+  export ROBOFLOW_API_KEY="your_key"
+  python download_roboflow.py                         # 下載所有數據集
+  python download_roboflow.py --dataset xtned          # 只下載原始數據集
+  python download_roboflow.py --dataset mutruity       # 只下載新數據集
 """
 import os
 import sys
-import urllib.request
-import zipfile
+import argparse
 
-# Roboflow dataset URL (export as folder structure)
-# Sign up at https://roboflow.com and get your API key
-# Then export this dataset: https://universe.roboflow.com/durian-cnn/durian-ripeness-detection-xtned
+# 支持的 Roboflow 數據集
+DATASETS = {
+    "xtned": {
+        "workspace": "durian-cnn",
+        "project": "durian-ripeness-detection-xtned",
+        "description": "Original: 1,438 images, 3 classes (Ripe/Unripe/Defect)",
+        "subdir": "roboflow_xtned",
+    },
+    "mutruity": {
+        "workspace": "wjy-tis6h",
+        "project": "durian_mutruity",
+        "description": "NEW: 3,000 images, 3 classes (defective/immature/mature) ★",
+        "subdir": "roboflow_mutruity",
+    },
+}
 
-ROBOFLOW_DATASET_URL = "https://universe.roboflow.com/durian-cnn/durian-ripeness-detection-xtned"
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "roboflow")
+BASE_DIR = os.path.dirname(__file__)
+DEFAULT_DATA_DIR = os.path.join(BASE_DIR, "..", "data", "raw")
 
 
-def download_with_api(api_key: str, workspace: str = "durian-cnn", project: str = "durian-ripeness-detection-xtned"):
-    """Download dataset using Roboflow API."""
+def download_dataset(api_key: str, dataset_name: str):
+    """Download a single Roboflow dataset."""
+    info = DATASETS[dataset_name]
+    data_dir = os.path.join(DEFAULT_DATA_DIR, info["subdir"])
+    os.makedirs(data_dir, exist_ok=True)
+
+    print(f"\n{'=' * 60}")
+    print(f"Downloading: {info['project']}")
+    print(f"  {info['description']}")
+    print(f"  → {os.path.abspath(data_dir)}")
+    print(f"{'=' * 60}")
+
     try:
         from roboflow import Roboflow
     except ImportError:
-        print("Installing roboflow...")
-        os.system(f"{sys.executable} -m pip install roboflow")
+        print("Installing roboflow package...")
+        os.system(f"{sys.executable} -m pip install -q roboflow")
         from roboflow import Roboflow
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-
     rf = Roboflow(api_key=api_key)
-    project_obj = rf.workspace(workspace).project(project)
+    project_obj = rf.workspace(info["workspace"]).project(info["project"])
     version = project_obj.versions()[0]
-    dataset = version.download("folder", location=DATA_DIR)
 
-    print(f"Dataset downloaded to: {DATA_DIR}")
+    print(f"Version: {version.version if hasattr(version, 'version') else 'latest'}")
     print(f"Classes: {version.classes}")
+    print(f"Images:  {len(version.images) if hasattr(version, 'images') else 'N/A'}")
+
+    dataset = version.download("folder", location=data_dir)
+    print(f"✅ Download complete: {info['project']}")
+    return dataset
 
 
-def download_manual():
-    """Print instructions for manual download."""
+def print_manual_instructions():
+    """Print manual download instructions for all datasets."""
     print("=" * 60)
-    print("Manual Download Instructions for Roboflow Dataset")
+    print("Manual Download Instructions")
     print("=" * 60)
-    print(f"""
-1. Go to: {ROBOFLOW_DATASET_URL}
-2. Sign up / Log in to Roboflow (free)
-3. Click "Download Dataset"
-4. Select format: "Folder" (for classification)
-5. Choose "show download code" or download ZIP
-6. Extract to: {os.path.abspath(DATA_DIR)}
 
-Expected structure after extraction:
-  {DATA_DIR}/
-  ├── train/
-  │   ├── Ripe/
-  │   ├── Unripe/
-  │   └── Defect/
-  ├── valid/
-  │   ├── Ripe/
-  │   ├── Unripe/
-  │   └── Defect/
-  └── test/
-      ├── Ripe/
-      ├── Unripe/
-      └── Defect/
+    for name, info in DATASETS.items():
+        url = f"https://universe.roboflow.com/{info['workspace']}/{info['project']}"
+        data_dir = os.path.join(DEFAULT_DATA_DIR, info["subdir"])
+        print(f"""
+--- {info['project']} ---
+  URL: {url}
+  Extract to: {os.path.abspath(data_dir)}
+  {info['description']}
+""")
 
-Tip: You can also use the Roboflow Python API:
-  pip install roboflow
-  python -c "
-    from roboflow import Roboflow
-    rf = Roboflow(api_key='YOUR_KEY')
-    project = rf.workspace('durian-cnn').project('durian-ripeness-detection-xtned')
-    project.versions()[0].download('folder')
-  "
+    print("""
+Or set ROBOFLOW_API_KEY and let this script download automatically:
+  export ROBOFLOW_API_KEY="your_key"
+  python download_roboflow.py
 """)
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Download Roboflow durian datasets")
+    parser.add_argument(
+        "--dataset",
+        choices=list(DATASETS.keys()) + ["all"],
+        default="all",
+        help="Which dataset to download (default: all)",
+    )
+    args = parser.parse_args()
+
     api_key = os.environ.get("ROBOFLOW_API_KEY", "")
-    if api_key:
-        download_with_api(api_key)
+    if not api_key:
+        print("⚠️ No ROBOFLOW_API_KEY environment variable found.")
+        print_manual_instructions()
+        sys.exit(0)
+
+    if args.dataset == "all":
+        for name in DATASETS:
+            download_dataset(api_key, name)
+        print(f"\n{'=' * 60}")
+        print("✅ All datasets downloaded successfully!")
+        print(f"{'=' * 60}")
     else:
-        print("No ROBOFLOW_API_KEY environment variable found.")
-        download_manual()
+        download_dataset(api_key, args.dataset)
 
 
 if __name__ == "__main__":

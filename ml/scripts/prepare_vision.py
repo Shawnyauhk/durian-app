@@ -3,17 +3,19 @@ prepare_vision.py — 圖像預處理管線
 統一 224x224 → 歸一化 → 標籤映射 → 分割訓練/驗證/測試集
 
 支持數據集:
-  roboflow  : 1,438 張, 3類 (Ripe/Unripe/Defect)
-  zenodo    : 189 樣本 RGB 圖像 (解壓後), 3類
-  rom1420   : GitHub 4類圖像 (Ripe1/Ripe2/Ripe3/Ripe4)
+  xtned    : 1,438 張, 3類 (Ripe/Unripe/Defect) [原本 roboflow]
+  mutruity : 3,000 張, 3類 (defective/immature/mature) ★ 新增！
+  zenodo   : 189 樣本 RGB 圖像 (解壓後), 3類
+  all      : 處理以上所有
 
 統一 3-class 標籤: unripe / ripe / overripe
 Defect 圖像: Phase 1 排除, Phase 2 加入為第4類
 
 用法:
-  python prepare_vision.py                           # 處理 roboflow (默認)
-  python prepare_vision.py --dataset zenodo          # 處理 zenodo RGB
-  python prepare_vision.py --dataset roboflow zenodo # 合並
+  python prepare_vision.py                           # 處理 xtned (默認)
+  python prepare_vision.py --dataset mutruity        # 處理新數據集
+  python prepare_vision.py --dataset all             # 處理全部
+  python prepare_vision.py --dataset xtned mutruity  # 合並
   python prepare_vision.py --size 160                # 縮小圖像 (更快訓練)
 """
 import os
@@ -50,13 +52,20 @@ IMG_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
 # Label Mapping
 # ============================================================
 
-# Roboflow: folder names → unified labels
-ROBOFLOW_LABEL_MAP = {
+# xtned: folder names → unified labels (原本 roboflow)
+XTNED_LABEL_MAP = {
     "Ripe": "ripe",
     "ripe": "ripe",
     "Unripe": "unripe",
     "unripe": "unripe",
     # "Defect": None,  # Excluded in Phase 1; add in Phase 2
+}
+
+# mutruity: folder names → unified labels ★ 新增
+MUTRUITY_LABEL_MAP = {
+    "immature": "unripe",
+    "mature": "ripe",
+    # "defective": None,  # Excluded in Phase 1 (same as Defect)
 }
 
 # Rom1420: folder names → unified labels
@@ -124,14 +133,18 @@ def is_image_file(path: str) -> bool:
 # Dataset Processing
 # ============================================================
 
-def process_roboflow(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tuple]:
-    """Process Roboflow dataset (folder structure: split/class/images).
-    Returns: {'train': (X, y), 'val': (X, y), 'test': (X, y)}
+def _load_folder_splits(
+    raw_dir: Path,
+    label_map: dict[str, str],
+    dataset_name: str,
+    size: int = IMG_SIZE,
+) -> dict[str, tuple]:
+    """Generic folder-structure dataset loader.
+    Expected structure: split/class/images (e.g. train/Ripe/img001.jpg)
     """
-    raw_dir = RAW_DIR / "roboflow"
     if not raw_dir.exists():
-        print(f"[Roboflow] Directory not found: {raw_dir}")
-        print("  Run: python download_roboflow.py")
+        print(f"[{dataset_name}] Directory not found: {raw_dir}")
+        print(f"  Run: python download_roboflow.py --dataset {dataset_name.replace('roboflow_', '')}")
         return {}
 
     splits = {}
@@ -147,9 +160,9 @@ def process_roboflow(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tuple]
         X, y = [], []
         for cls_dir in class_dirs:
             cls_name = cls_dir.name
-            unified_label = ROBOFLOW_LABEL_MAP.get(cls_name)
+            unified_label = label_map.get(cls_name)
             if unified_label is None:
-                print(f"  [SKIP] {split_name}/{cls_name} (Defect excluded in Phase 1)")
+                print(f"  [SKIP] {split_name}/{cls_name} (excluded in Phase 1)")
                 continue
 
             images = [f for f in cls_dir.iterdir() if is_image_file(str(f))]
@@ -165,6 +178,31 @@ def process_roboflow(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tuple]
         if X:
             splits[out_key] = (np.array(X), np.array(y))
 
+    return splits
+
+
+def process_xtned(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tuple]:
+    """Process xtned dataset (原 roboflow data): 1,438 張, 3類。
+    支援兼容路徑: roboflow_xtned 或舊的 roboflow
+    """
+    # Check new path first, then fall back to old path
+    for dir_name in ["roboflow_xtned", "roboflow"]:
+        raw_dir = RAW_DIR / dir_name
+        splits = _load_folder_splits(raw_dir, XTNED_LABEL_MAP, "xtned", size)
+        if splits:
+            total = sum(len(X) for X, _ in splits.values())
+            print(f"  [xtned] Total: {total} images from {dir_name}/")
+            return splits
+    return {}
+
+
+def process_mutruity(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tuple]:
+    """Process mutruity dataset: 3,000 張, 3類 (defective/immature/mature)."""
+    raw_dir = RAW_DIR / "roboflow_mutruity"
+    splits = _load_folder_splits(raw_dir, MUTRUITY_LABEL_MAP, "mutruity", size)
+    if splits:
+        total = sum(len(X) for X, _ in splits.values())
+        print(f"  [mutruity] Total: {total} images")
     return splits
 
 
@@ -207,11 +245,9 @@ def process_zenodo_rgb(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tupl
     skip_count = 0
 
     for img_path in image_files:
-        # Try to match Code from filename or parent directory
         stem = img_path.stem
         parent = img_path.parent.name
 
-        # Try patterns: RGB_{Code}.jpg, {Code}.jpg, parent folder = Code
         code = None
         for candidate in [stem, parent,
                           stem.replace("RGB_", ""),
@@ -223,7 +259,6 @@ def process_zenodo_rgb(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tupl
         if code:
             label = csv_labels[code]
         else:
-            # Fallback: parse Code from filename
             label = get_zenodo_label_from_code(stem)
 
         if label is None:
@@ -243,7 +278,6 @@ def process_zenodo_rgb(output_dir: Path, size: int = IMG_SIZE) -> dict[str, tupl
     if not X:
         return {}
 
-    # Split for standalone zenodo dataset
     from sklearn.model_selection import train_test_split
     X_arr = np.array(X)
     y_arr = np.array(y)
@@ -323,9 +357,9 @@ def combine_splits(splits_list: list[dict[str, tuple]]) -> dict[str, tuple]:
 def main():
     parser = argparse.ArgumentParser(description="Prepare vision data for DurianAI")
     parser.add_argument(
-        "--dataset", nargs="+", default=["roboflow"],
-        choices=["roboflow", "zenodo"],
-        help="Dataset(s) to process",
+        "--dataset", nargs="+", default=["xtned"],
+        choices=["xtned", "mutruity", "zenodo", "all"],
+        help="Dataset(s) to process (default: xtned, choose 'all' for everything)",
     )
     parser.add_argument("--size", type=int, default=IMG_SIZE, help="Image size (default 224)")
     parser.add_argument("--output", default=str(PROCESSED_DIR), help="Output directory")
@@ -337,22 +371,31 @@ def main():
         print("  pip install Pillow scikit-learn")
         sys.exit(1)
 
+    # Resolve 'all' to all datasets
+    datasets = args.dataset
+    if "all" in datasets:
+        datasets = ["xtned", "mutruity", "zenodo"]
+
     output_dir = Path(args.output)
     splits_list = []
 
-    for dataset in args.dataset:
+    PROCESSORS = {
+        "xtned": process_xtned,
+        "mutruity": process_mutruity,
+        "zenodo": process_zenodo_rgb,
+    }
+
+    for dataset in datasets:
         print(f"\n{'='*60}")
         print(f"Processing dataset: {dataset} | size: {args.size}x{args.size}")
         print(f"{'='*60}")
 
-        if dataset == "roboflow":
-            splits = process_roboflow(output_dir, args.size)
-        elif dataset == "zenodo":
-            splits = process_zenodo_rgb(output_dir, args.size)
-        else:
+        proc = PROCESSORS.get(dataset)
+        if proc is None:
             print(f"[ERROR] Unknown dataset: {dataset}")
             continue
 
+        splits = proc(output_dir, args.size)
         if splits:
             splits_list.append(splits)
 
@@ -361,7 +404,7 @@ def main():
         sys.exit(1)
 
     if len(splits_list) == 1:
-        prefix = args.dataset[0]
+        prefix = datasets[0]
         final_splits = splits_list[0]
     else:
         prefix = "combined"

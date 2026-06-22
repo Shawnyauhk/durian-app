@@ -31,9 +31,17 @@ CSV 文件 `durian_characteristics_cleaned.csv` 包含 189 行完整元数据：
 | # | 数据集 | 图像数 | 分类体系 | 授权 | 格式 | 下载方式 | 质量 |
 |---|--------|--------|---------|------|------|---------|------|
 | 1 | **Roboflow xtned** | 1,438 张 | 3类 (Ripe/Unripe/Defect) | CC BY | JPG | ✅ 需 API Key | ⭐⭐⭐⭐⭐ 最佳起點 |
-| 2 | **Rom1420 GitHub** | ? | 4类 (Ripe1=unripe/Ripe2=ripe/Ripe3=overripe/Ripe4=overripe) | 开源 | JPG | ✅ 免費 | ⭐⭐⭐⭐ CNN 93% |
-| 3 | **Zenodo RGB** | 189 榴槤 × 多角度 | 3类 (同聲學) | CC BY | JPG (19GB) | ✅ API自動 | ⭐⭐⭐⭐⭐ 配對聲學 |
-| 4 | Monthong 論文 | 1,000 | 4类 (overripe/semi/unripe/ripe) | 未公開 | 未明 | ❌ | MobileNetV2 95.5% |
+| 2 | **Roboflow mutruity ★ 新增** | **3,000 张** | **3类 (immature/mature/defective)** | **CC BY 4.0** | JPG | ✅ 需 API Key | ⭐⭐⭐⭐⭐ **最大公開視覺集** |
+| 3 | **Rom1420 GitHub** | ? | 4类 (Ripe1=unripe/Ripe2=ripe/Ripe3=overripe/Ripe4=overripe) | 开源 | JPG | ✅ 免費 | ⭐⭐⭐⭐ CNN 93% |
+| 4 | **Zenodo RGB** | 189 榴槤 × 多角度 | 3类 (同聲學) | CC BY | JPG (19GB) | ✅ API自動 | ⭐⭐⭐⭐⭐ 配對聲學 |
+| 5 | Monthong 論文 | 1,000 | 4类 (overripe/semi/unripe/ripe) | 未公開 | 未明 | ❌ | MobileNetV2 95.5% |
+
+**关于 mutruity 数据集 (★ 新增)**
+- Roboflow workspace `wjy-tis6h` / project `durian_mutruity`
+- 3,000 张图像，3 类：defective(坏果) / immature(未熟) / mature(成熟)
+- CC BY 4.0 免费开源授权 → 可自由使用
+- 标签映射：immature→unripe, mature→ripe, defective→Phase 1 排除
+- 与原有 xtned 合并后视觉训练数据可达约 **4,500 张**
 
 ---
 
@@ -41,15 +49,16 @@ CSV 文件 `durian_characteristics_cleaned.csv` 包含 189 行完整元数据：
 
 **核心决策：统一采用 3 类体系**
 
-| 统一标签 | Zenodo | Dalvii | Roboflow | Rom1420 | 含义 |
-|---------|--------|--------|----------|---------|------|
-| **unripe** | Unripe (UN) | 75-85% | Unripe | Ripe1 | 未熟/不熟 |
-| **ripe** | Ripe (RI) | 95%-Ripe | Ripe | Ripe2 | 刚好成熟 |
-| **overripe** | Overripe (OR) | — | — | Ripe3+Ripe4 | 过熟 |
+| 统一标签 | Zenodo | Dalvii | Roboflow xtned | Roboflow mutruity ★ | Rom1420 | 含义 |
+|---------|--------|--------|----------|---------|---------|------|
+| **unripe** | Unripe (UN) | 75-85% | Unripe | immature | Ripe1 | 未熟/不熟 |
+| **ripe** | Ripe (RI) | 95%-Ripe | Ripe | mature | Ripe2 | 刚好成熟 |
+| **overripe** | Overripe (OR) | — | — | — | Ripe3+Ripe4 | 过熟 |
 
 **特殊处理：**
 - Dalvii 缺 overripe 类 → 仅用于 unripe/ripe 二分类辅助训练
 - Roboflow 的 Defect 类 → 排除出 3 分类（Phase 2 可加回为第 4 类）
+- **mutruity 的 defective 类 → 同 Defect，Phase 1 排除（两种排除类可合并为 Phase 2 的第 4 类）**
 - Zenodo 的 Disease 样本(2个) → 排除出训练集
 - Zenodo CSV 的 Actual_Ripening_Status 为空(2个) → 使用 Ripeness 字段作 fallback
 
@@ -169,16 +178,22 @@ Dalvii WAV (100 files)
 ### 视觉数据流
 
 ```
-Roboflow (1,438 images, 3-class)
+Roboflow xtned (1,438 images, 3-class)
   ↓ folder structure: train/{Ripe,Unripe,Defect}/
   ↓ resize 224×224 → normalize [0,1]
   ↓ Ripe→ripe, Unripe→unripe, Defect→排除(Phase 1)
+
+Roboflow mutruity ★ (3,000 images, 3-class)
+  ↓ folder structure: train/{immature,mature,defective}/
+  ↓ resize 224×224 → normalize [0,1]
+  ↓ immature→unripe, mature→ripe, defective→排除(Phase 1)
 
 Zenodo RGB (189 × 多角度, 19GB)
   ↓ CSV Code → label
   ↓ resize 224×224 → normalize
 
 合并 → augmentation(翻转/亮度/对比度) → split
+总训练数据: ~4,500 images (xtned + mutruity)
 ```
 
 ---
@@ -280,3 +295,45 @@ function fuseResults(acoustic, vision) {
 5. **Dalvii**: Dalvii (2025). *durian-maturity-classification*. GitHub. 100 WAV Dona variety.
 6. **YAMNet**: Google (2020). *YAMNet: Audio Event Classification*. TFHub.
 7. **SpecAugment**: Park et al. (2019). *SpecAugment: A Simple Data Augmentation Method for ASR*. Interspeech.
+
+---
+
+## 🧩 11. 开源项目参考（通过调研发现）
+
+### A. 可直接使用的数据集
+
+| 项目 | 内容 | 用途 | 进度 |
+|------|------|------|------|
+| **Roboflow durian_mutruity** | 3,000张，3类 (CC BY 4.0) | 视觉训练，与xtned合并约4,500张 | ✅ **已整合进脚本** |
+| **Roboflow Deteksi Jenis Durian** | 1,800张，6品种，YOLOv11 96%mAP | 品种识别过滤（monthong检测） | 🔜 Phase 2 |
+
+### B. 值得借鉴的技术方案
+
+| 项目 | 技术亮点 | 可借鉴到 DurianAI |
+|------|---------|------------------|
+| **durian-helper-mini-program** | 1. YOLO检测 + 稳定编号(A/B/C) <br> 2. 多模态AI评分 <br> 3. 裁剪图生成 <br> 4. 微信小程序全栈 | **Phase 2**: YOLO多榴莲检测 + 稳定编号算法 <br> 参考其行排序(row-based labeling)逻辑 |
+| **weijiayi-1 durian_detecton_system** | 1. 双模型架构(品种+成熟度) <br> 2. IOU匹配绑定额定框 <br> 3. PyQt5桌面GUI | 参考其成熟度类别设计(mature/immature/defective) |
+| **thinksoso/pick_your_durian** | SAM分割 + 离心率/刺密度计算 | 可选的视觉形状分析（非成熟度相关） |
+
+### C. 稳定编号算法（从 durian-helper 借鉴）
+
+当照片中有**多个榴莲**时，需要稳定编号 A/B/C... 以便用户对应结果：
+
+```
+1. 检测所有 durian 目标框 (YOLO)
+2. 按检测框中心点 y 坐标分层
+3. 同层按 x 坐标升序
+4. 层间按 y 坐标升序
+5. 分配 A/B/C... 标签
+6. 为每个榴莲裁剪 crop 图
+```
+
+参考实现: `cv-service/app/services/detector.py` — `_assign_labels()` / `_row_threshold()`
+
+### D. Roboflow 品种识别模型
+
+**Deteksi Jenis Durian** (workspace: `skripsi-xtfuk`, project: `deteksi-jenis-durian`)
+- YOLOv11 模型，6 品种（bawor/black thorn/kanyao/monthong/musang king/not durian）
+- mAP 96.0%, Precision 93.8%, Recall 88.7%
+- 可通过 Roboflow API 调用，无需本地部署
+- **用途**: 在成熟度检测前增加品种识别，过滤非 monthong 品种

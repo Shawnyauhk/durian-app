@@ -238,7 +238,7 @@ def combine_vision(balance: bool = True):
                 print(f"  Found vision/{split}: {X.shape}")
 
     # Check for prefix-based splits (if multiple datasets processed separately)
-    for prefix in ["roboflow", "zenodo"]:
+    for prefix in ["roboflow", "roboflow_xtned", "mutruity", "zenodo", "xtned"]:
         for split in ["train", "val", "test"]:
             path = VISION_DIR / f"{prefix}_{split}.npz"
             if path.exists():
