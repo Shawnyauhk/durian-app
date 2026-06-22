@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build output
+frontend/dist/
+
+# ML data (large files)
+ml/data/raw/zenodo/audio/
+ml/data/raw/zenodo/rgb/
+ml/data/raw/zenodo/multispectral/
+ml/data/raw/zenodo/thermal/
+ml/data/raw/dalvii/
+ml/data/raw/roboflow/
+ml/data/processed/
+ml/models/trained/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Feedback data (user privacy)
+backend/data/feedback/
+
+# Temporary
+*.tmp
+*.bak

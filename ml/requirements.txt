@@ -1,0 +1,37 @@
+# ML Pipeline Dependencies
+# Install: pip install -r ml/requirements.txt
+
+# Core
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.0
+pydub>=0.25.1
+
+# Image processing
+Pillow>=10.0.0
+opencv-python>=4.8.0
+
+# TensorFlow (for training & TFLite export)
+tensorflow>=2.15.0
+
+# TFLite Runtime (lightweight alternative to full TF, for inference only)
+# Uncomment one of these instead of full tensorflow if only doing inference:
+# tflite-runtime>=2.14.0
+
+# Data handling
+scikit-learn>=1.3.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# Roboflow (for dataset download)
+roboflow>=1.1.0
+
+# YAMNet transfer learning
+tensorflow-hub>=0.16.0
+
+# Colab/Jupyter
+jupyter>=1.0.0
+ipywidgets>=8.0.0
