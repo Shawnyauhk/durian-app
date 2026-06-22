@@ -1,13 +1,13 @@
 services:
-  # Backend: FastAPI Web Service
+  # Backend: FastAPI Web Service (Docker — needs ffmpeg for pydub)
   - type: web
     name: durianai-api
-    runtime: python
+    runtime: docker
     region: singapore
     plan: free
     branch: main
-    buildCommand: apt-get update -qq && apt-get install -y -qq ffmpeg && pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
