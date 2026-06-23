@@ -151,17 +151,31 @@ def load_zenodo_csv_labels(csv_path: Path) -> dict[str, str]:
 
 def get_zenodo_label_from_filename(filename: str, csv_labels: dict[str, str]) -> Optional[str]:
     """Get label for a Zenodo audio file.
-    Zenodo audio files are named after the Code field.
-    The ZIP typically extracts to: {Code}.wav or {Code}/{Code}.wav
+    Two naming conventions:
+    1. Old ZIP: {Code}.wav where Code = 'IM_CA_UN_1'
+    2. New Zenodo: durian_{id}_{label}_{source}.wav where label = unripe/ripe/overripe
     """
-    stem = Path(filename).stem  # e.g. "IM_CA_UN_1" or "M_CB_RI_92"
+    stem = Path(filename).stem  # e.g. "IM_CA_UN_1" or "durian_001_unripe_android"
 
     # Try direct CSV lookup first (most accurate)
     if stem in csv_labels:
         return csv_labels[stem]
 
-    # Fallback: parse from filename code pattern
-    return get_zenodo_label_from_code(stem)
+    # Fallback 1: parse from filename code pattern (old format)
+    label = get_zenodo_label_from_code(stem)
+    if label:
+        return label
+
+    # Fallback 2: parse durian_NNN_{label}_source format (new Zenodo format)
+    parts = stem.split("_")
+    # e.g. durian_001_unripe_android → ['durian', '001', 'unripe', 'android']
+    if len(parts) >= 3 and parts[0] == "durian":
+        raw_label = parts[2].lower()
+        zenodo_status_map = {"unripe": "unripe", "ripe": "ripe", "overripe": "overripe"}
+        if raw_label in zenodo_status_map:
+            return zenodo_status_map[raw_label]
+
+    return None
 
 
 # ============================================================
